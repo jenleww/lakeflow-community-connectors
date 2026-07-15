@@ -1,0 +1,69 @@
+# IBM Maximo Community Connector Spec
+# This file defines the specification for the connector including
+# connection parameters and allowlist options.
+
+# ============================================================================
+# Display name (required for Databricks to show connection parameter prompts)
+# ============================================================================
+display_name: IBM Maximo
+
+# ============================================================================
+# Connection Parameters
+# These are provided when creating the Unity Catalog connection.
+# IBM Maximo uses API-key authentication with a base URL and optional
+# configuration for API routing and headers.
+# ============================================================================
+connection:
+  parameters:
+    - name: base_url
+      type: string
+      required: true
+      description: >
+        Maximo host root URL (e.g., https://maximo.example.com). The connector
+        uses this to construct OSLC API endpoints. Alias: host
+      aliases:
+        - host
+
+    - name: api_key
+      type: string
+      required: true
+      secret: true
+      description: >
+        API key for authentication sent in the apikey HTTP header.
+        Store as a Databricks secret rather than inline.
+
+    - name: api_route
+      type: string
+      required: false
+      description: >
+        API route to use: either 'oslc' (default, on-premises Maximo) or 'api'
+        (MAS Manage). Determines the API path segment used to construct OSLC
+        endpoints.
+
+    - name: x_public_uri
+      type: string
+      required: false
+      description: >
+        Value for the x-public-uri HTTP header. Required only for MAS Manage.
+        Leave empty for on-premises Maximo.
+
+    - name: page_size
+      type: integer
+      required: false
+      description: >
+        Default oslc.pageSize for API requests (default: 200). Adjust for
+        performance tuning based on your network and Maximo configuration.
+
+# ============================================================================
+# External Options Allowlist
+# Table-specific options read by the connector. Include these in the
+# UC connection's externalOptionsAllowList as a comma-separated string.
+#
+# Supported table-specific options:
+#   - window_seconds       : Partition window size in seconds (default: 86400 / 1 day)
+#   - lookback_seconds     : Lookback subtracted from the start cursor (default: 300 / 5 minutes)
+#   - page_size            : Override oslc.pageSize for this specific table
+#   - start_timestamp      : ISO-8601 lower bound for first read when no offset exists
+#   - max_records_per_batch: Cap for snapshot/fallback path (default: 200000)
+# ============================================================================
+external_options_allowlist: "window_seconds,lookback_seconds,page_size,start_timestamp,max_records_per_batch"

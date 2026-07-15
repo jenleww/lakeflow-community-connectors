@@ -1,0 +1,31 @@
+# IBM Maximo OSLC REST API — object-structure reads exercised by the connector.
+#
+# The connector issues:
+#   GET /maximo/oslc/os/{osname}?lean=1&oslc.pageSize=N&oslc.select=...
+#       &oslc.where=changedate>"..." and changedate<="..."&oslc.orderBy=+changedate
+#   (MAS Manage deployments use /maximo/api/os/{osname} instead of /oslc.)
+#
+# The compound ``oslc.where`` expression (a single query param carrying a
+# range clause) and the ``responseInfo.nextPage.href`` pagination envelope
+# don't fit the declarative param-role pipeline, so a custom handler serves
+# these. The handler:
+#   * maps {osname} -> corpus (bootstrapped from TABLE_SCHEMAS, one file per
+#     table keyed by osname),
+#   * subsets by the ``changedate`` range parsed from oslc.where,
+#   * sorts ascending by changedate,
+#   * appends a few future-dated clones so the connector's init-time
+#     (``changedate<=<init_time>``) cap is exercised by the termination test,
+#   * paginates via oslc.pageSize + pageno and emits nextPage.href when more
+#     pages remain.
+#
+# Both routes ({osname} under /oslc and /api) alias the same handler; the
+# handler recovers the osname from the request path either way.
+
+endpoints:
+  - path: "/maximo/oslc/os/{osname}"
+    method: GET
+    handler: databricks.labs.community_connector.source_simulator.specs.ibm_maximo.handlers.oslc:read_os
+
+  - path: "/maximo/api/os/{osname}"
+    method: GET
+    handler: databricks.labs.community_connector.source_simulator.specs.ibm_maximo.handlers.oslc:read_os
