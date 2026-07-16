@@ -43,8 +43,8 @@ class TestIbmMaximoConnector(LakeflowConnectTests, SupportsPartitionedStreamTest
         "api_key": "simulator-fake-key",
     }
 
-    # Small page size forces the 12-record-per-table corpus across several
-    # pages, exercising the nextPage.href pagination path for every table.
+    # Small page size forces the corpus across several pages, exercising the
+    # nextPage.href pagination path for every table.
     table_configs = {
         table: {"page_size": "5"}
         for table in (
@@ -58,4 +58,29 @@ class TestIbmMaximoConnector(LakeflowConnectTests, SupportsPartitionedStreamTest
             "mxapilocations",
             "mxapiitem",
         )
+    }
+
+    # Columns that are valid Maximo MBO attributes (the OSLC API accepts them
+    # in oslc.select and returns them) but are simply unpopulated in the trial
+    # sandbox this connector was recorded against. The corpus is seeded from
+    # that live cassette, so no record exercises these columns and the
+    # simulate-mode column-population invariant would otherwise flag them.
+    # They remain in the schema because real Maximo deployments populate them.
+    allow_null_columns = {
+        "mxapiwodetail": {
+            "priority",
+            "actstart",
+            "actfinish",
+            "schedstart",
+            "schedfinish",
+            "owner",
+            "ownerperson",
+            "ownergroup",
+            "glaccount",
+        },
+        "mxapiasset": {"parent", "warrantyexpdate", "tottimeonsite"},
+        "mxapipo": {"vendorname", "currency", "fromsiteid", "tostoreloc"},
+        "mxapisr": {"summary", "wonum"},
+        "mxapiperson": {"deviceclass"},
+        "mxapilocations": {"parent", "systemid"},
     }

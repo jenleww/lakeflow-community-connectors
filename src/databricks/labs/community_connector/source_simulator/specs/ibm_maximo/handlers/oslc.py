@@ -14,15 +14,22 @@ envelope don't fit the simulator's declarative param-role pipeline, so this
 handler serves the endpoint directly. It:
 
   1. Extracts ``osname`` from the URL path and maps it to a corpus.
-  2. Parses the ``changedate`` lower/upper bounds out of ``oslc.where`` and
-     subsets the corpus by them (parsed as datetimes, so mixed ``Z`` / offset
-     formats compare correctly).
-  3. Sorts ascending by ``changedate``.
+  2. Parses the cursor lower/upper bounds out of ``oslc.where`` and subsets
+     the corpus by them (parsed as datetimes, so mixed ``Z`` / offset formats
+     compare correctly). The cursor field is whichever attribute the where
+     clause references — most object structures use ``changedate``, but a few
+     (mxapiperson, mxapiinventory, mxapiitem) do not expose ``changedate`` as a
+     queryable OSLC property and use ``statusdate`` instead.
+  3. Sorts ascending by that same cursor field.
   4. Appends a few future-dated clones so the connector's ``until=<init_time>``
      cap is exercised by the termination test (mirrors the declarative
      ``synthesize_future_records:`` directive).
   5. Paginates via ``oslc.pageSize`` + ``pageno`` and emits a
      ``responseInfo.nextPage.href`` when more pages remain.
+
+Snapshot object structures (mxapiinvbal) issue no ``oslc.where`` and have no
+cursor; for those the handler skips range filtering, sorting, and future-record
+augmentation and simply paginates the corpus.
 """
 
 from __future__ import annotations
@@ -45,9 +52,12 @@ from databricks.labs.community_connector.source_simulator.interceptor import (
 
 _OSNAME_RE = re.compile(r"/maximo/(?:oslc|api)/os/(?P<osname>[^/?]+)")
 
-# Bounds parsed out of the compound oslc.where expression.
-_LOWER_RE = re.compile(r'changedate\s*>\s*"(?P<v>[^"]+)"')
-_UPPER_RE = re.compile(r'changedate\s*<=\s*"(?P<v>[^"]+)"')
+# Cursor bounds parsed out of the compound oslc.where expression. The cursor
+# field is not hard-coded to ``changedate`` because a few object structures
+# filter on ``statusdate`` instead — the field name is captured from the
+# clause itself.
+_LOWER_RE = re.compile(r'(?P<field>\w+)\s*>\s*"(?P<v>[^"]+)"')
+_UPPER_RE = re.compile(r'(?P<field>\w+)\s*<=\s*"(?P<v>[^"]+)"')
 
 _DEFAULT_PAGE_SIZE = 200
 _FUTURE_RECORDS = 3
@@ -66,13 +76,21 @@ def read_os(prep: PreparedRequest, spec: Any, corpus: Any) -> Response:  # noqa:
     if not isinstance(records, list):
         records = []
 
-    records = _augment_with_future(records)
+    cursor_field, lo, hi = _extract_bounds(query.get("oslc.where"))
 
-    lo, hi = _extract_bounds(query.get("oslc.where"))
-    filtered = [r for r in records if _changedate_in_range(r, lo, hi)]
-
-    # Ascending sort by changedate (the connector always requests +changedate).
-    filtered = sorted(filtered, key=lambda r: _parse_iso(r.get("changedate")) or datetime.min.replace(tzinfo=timezone.utc))
+    if cursor_field:
+        # Incremental read: augment with future-dated clones so the init-time
+        # cap is exercised, then subset + ascending-sort by the cursor field.
+        records = _augment_with_future(records, cursor_field)
+        filtered = [r for r in records if _cursor_in_range(r, cursor_field, lo, hi)]
+        filtered = sorted(
+            filtered,
+            key=lambda r: _parse_iso(r.get(cursor_field))
+            or datetime.min.replace(tzinfo=timezone.utc),
+        )
+    else:
+        # Snapshot read (no oslc.where): serve the corpus as-is.
+        filtered = list(records)
 
     page_size = _to_int(query.get("oslc.pageSize"), _DEFAULT_PAGE_SIZE)
     pageno = _to_int(query.get("pageno"), 1)
@@ -95,21 +113,33 @@ def read_os(prep: PreparedRequest, spec: Any, corpus: Any) -> Response:  # noqa:
 # ---------------------------------------------------------------------------
 
 
-def _extract_bounds(where: str | None) -> tuple[str | None, str | None]:
+def _extract_bounds(where: str | None) -> tuple[str | None, str | None, str | None]:
+    """Return ``(cursor_field, lower, upper)`` parsed from the where clause.
+
+    ``cursor_field`` is ``None`` when there is no where clause (snapshot read).
+    """
     if not where:
-        return None, None
+        return None, None, None
     lo_m = _LOWER_RE.search(where)
     hi_m = _UPPER_RE.search(where)
+    field = None
+    if lo_m:
+        field = lo_m.group("field")
+    elif hi_m:
+        field = hi_m.group("field")
     return (
+        field,
         lo_m.group("v") if lo_m else None,
         hi_m.group("v") if hi_m else None,
     )
 
 
-def _changedate_in_range(record: dict[str, Any], lo: str | None, hi: str | None) -> bool:
-    ts = _parse_iso(record.get("changedate"))
+def _cursor_in_range(
+    record: dict[str, Any], cursor_field: str, lo: str | None, hi: str | None
+) -> bool:
+    ts = _parse_iso(record.get(cursor_field))
     if ts is None:
-        # Records without changedate only survive an unbounded query.
+        # Records without a cursor value only survive an unbounded query.
         return lo is None and hi is None
     lo_dt = _parse_iso(lo)
     hi_dt = _parse_iso(hi)
@@ -132,10 +162,14 @@ def _parse_iso(value: Any) -> datetime | None:
     return dt.astimezone(timezone.utc)
 
 
-def _augment_with_future(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def _augment_with_future(
+    records: list[dict[str, Any]], cursor_field: str
+) -> list[dict[str, Any]]:
     """Append future-dated clones so cap-validation termination tests bite.
 
-    A correctly-capped connector filters these out via ``changedate<=init``.
+    A correctly-capped connector filters these out via ``<cursor><=init``.
+    The clones' cursor field is set to the table's cursor (``changedate`` or
+    ``statusdate``) so the range subset in the handler still excludes them.
     """
     if not records:
         return records
@@ -145,7 +179,7 @@ def _augment_with_future(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
     for i in range(_FUTURE_RECORDS):
         clone = copy.deepcopy(template)
         future_ts = (base + timedelta(hours=i)).strftime("%Y-%m-%dT%H:%M:%S+00:00")
-        clone["changedate"] = future_ts
+        clone[cursor_field] = future_ts
         future.append(clone)
     return list(records) + future
 

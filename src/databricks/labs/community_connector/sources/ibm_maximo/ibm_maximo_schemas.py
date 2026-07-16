@@ -109,46 +109,60 @@ PO_SCHEMA = StructType(
     ]
 )
 
+# Inventory is keyed on the storeroom ``location`` (Maximo's INVENTORY MBO
+# exposes the storeroom as ``location``, not ``storeloc``). ``changedate`` is
+# not a queryable OSLC property on this object structure, so the cursor is
+# ``statusdate``; balances/costs are surfaced via the INVBALANCES child and
+# ``curbaltotal`` rather than a scalar ``curbal`` here.
 INVENTORY_SCHEMA = StructType(
     [
         StructField("itemnum", StringType(), False),
-        StructField("storeloc", StringType(), False),
+        StructField("location", StringType(), False),
         StructField("siteid", StringType(), False),
         StructField("orgid", StringType(), True),
-        StructField("description", StringType(), True),
-        StructField("category", StringType(), True),
+        StructField("itemsetid", StringType(), True),
         StructField("itemtype", StringType(), True),
-        StructField("vendor", StringType(), True),
-        StructField("unitcost", DoubleType(), True),
-        StructField("curbal", DoubleType(), True),
+        StructField("curbaltotal", DoubleType(), True),
+        StructField("avblbalance", DoubleType(), True),
         StructField("orderqty", DoubleType(), True),
-        StructField("reorderpoint", DoubleType(), True),
+        StructField("reorder", BooleanType(), True),
         StructField("maxlevel", DoubleType(), True),
         StructField("minlevel", DoubleType(), True),
-        StructField("changedate", StringType(), True),
-        StructField("changeby", StringType(), True),
+        StructField("status", StringType(), True),
+        StructField("statusdate", StringType(), True),
     ]
 )
 
+# Inventory Balances. ``invbalancesid`` is the stable, unique surrogate key
+# (Maximo INVBALANCES). The storeroom is ``location`` (not ``storeloc``);
+# ``binnum`` and ``lotnum`` are only populated for bin-/lot-tracked items, so
+# they are nullable. There is no ``changedate``/``changeby`` on this MBO.
 INVBAL_SCHEMA = StructType(
     [
+        StructField("invbalancesid", LongType(), False),
         StructField("itemnum", StringType(), False),
         StructField("siteid", StringType(), False),
-        StructField("storeloc", StringType(), False),
+        StructField("location", StringType(), False),
         StructField("orgid", StringType(), True),
-        StructField("lotnum", StringType(), False),
-        StructField("binnum", StringType(), False),
+        StructField("itemsetid", StringType(), True),
+        StructField("itemtype", StringType(), True),
+        StructField("lotnum", StringType(), True),
+        StructField("binnum", StringType(), True),
         StructField("curbal", DoubleType(), True),
+        StructField("physcnt", DoubleType(), True),
+        StructField("physcntdate", StringType(), True),
         StructField("stagingbin", BooleanType(), True),
-        StructField("changeby", StringType(), True),
-        StructField("changedate", StringType(), True),
+        StructField("reconciled", BooleanType(), True),
     ]
 )
 
 SR_SCHEMA = StructType(
     [
         StructField("ticketid", StringType(), False),
-        StructField("siteid", StringType(), False),
+        # siteid/orgid are frequently unset on service requests (they may be
+        # reported before an owning site/org is assigned), so they are
+        # nullable and ticketid alone is the primary key.
+        StructField("siteid", StringType(), True),
         StructField("orgid", StringType(), True),
         StructField("summary", StringType(), True),
         StructField("description", StringType(), True),
@@ -168,6 +182,9 @@ SR_SCHEMA = StructType(
     ]
 )
 
+# The PERSON MBO does not expose email/phone/department as scalar attributes
+# (they live in child collections) and has no ``changedate``; ``statusdate`` is
+# the cursor. Only scalar attributes actually returned in lean mode are kept.
 PERSON_SCHEMA = StructType(
     [
         StructField("personid", StringType(), False),
@@ -175,14 +192,10 @@ PERSON_SCHEMA = StructType(
         StructField("lastname", StringType(), True),
         StructField("displayname", StringType(), True),
         StructField("status", StringType(), True),
-        StructField("primaryemail", StringType(), True),
-        StructField("primaryphone", StringType(), True),
-        StructField("department", StringType(), True),
-        StructField("locationsite", StringType(), True),
-        StructField("locationorg", StringType(), True),
-        StructField("changedate", StringType(), True),
-        StructField("changeby", StringType(), True),
-        StructField("sms", StringType(), True),
+        StructField("statusdate", StringType(), True),
+        StructField("deviceclass", LongType(), True),
+        StructField("loctoservreq", BooleanType(), True),
+        StructField("languserupdated", BooleanType(), True),
     ]
 )
 
@@ -202,20 +215,21 @@ LOCATIONS_SCHEMA = StructType(
     ]
 )
 
+# Items are defined at the item-set level, not the org level, so ``orgid`` is
+# not populated on the ITEM MBO; ``itemsetid`` is the scoping key. ``changedate``
+# is not a queryable OSLC property here, so the cursor is ``statusdate``.
 ITEM_SCHEMA = StructType(
     [
         StructField("itemnum", StringType(), False),
-        StructField("orgid", StringType(), False),
+        StructField("itemsetid", StringType(), False),
         StructField("description", StringType(), True),
         StructField("itemtype", StringType(), True),
         StructField("status", StringType(), True),
-        StructField("unitofmeasure", StringType(), True),
+        StructField("statusdate", StringType(), True),
         StructField("commoditygroup", StringType(), True),
         StructField("commodity", StringType(), True),
         StructField("rotating", BooleanType(), True),
         StructField("lottype", StringType(), True),
-        StructField("changedate", StringType(), True),
-        StructField("changeby", StringType(), True),
     ]
 )
 
@@ -261,22 +275,22 @@ TABLE_METADATA: dict[str, dict] = {
         "ingestion_type": "cdc",
     },
     "mxapiinventory": {
-        "primary_keys": ["itemnum", "storeloc", "siteid"],
-        "cursor_field": "changedate",
+        "primary_keys": ["itemnum", "location", "siteid"],
+        "cursor_field": "statusdate",
         "ingestion_type": "cdc",
     },
     "mxapiinvbal": {
-        "primary_keys": ["itemnum", "storeloc", "siteid", "lotnum", "binnum"],
+        "primary_keys": ["invbalancesid"],
         "ingestion_type": "snapshot",
     },
     "mxapisr": {
-        "primary_keys": ["ticketid", "siteid"],
+        "primary_keys": ["ticketid"],
         "cursor_field": "changedate",
         "ingestion_type": "cdc",
     },
     "mxapiperson": {
         "primary_keys": ["personid"],
-        "cursor_field": "changedate",
+        "cursor_field": "statusdate",
         "ingestion_type": "cdc",
     },
     "mxapilocations": {
@@ -285,8 +299,8 @@ TABLE_METADATA: dict[str, dict] = {
         "ingestion_type": "cdc",
     },
     "mxapiitem": {
-        "primary_keys": ["itemnum", "orgid"],
-        "cursor_field": "changedate",
+        "primary_keys": ["itemnum", "itemsetid"],
+        "cursor_field": "statusdate",
         "ingestion_type": "cdc",
     },
 }

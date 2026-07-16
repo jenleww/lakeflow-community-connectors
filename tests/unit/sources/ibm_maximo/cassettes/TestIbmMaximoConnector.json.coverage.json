@@ -1,0 +1,199 @@
+{
+  "version": 1,
+  "endpoints": [
+    {
+      "method": "GET",
+      "url": "https://main.manage.sandbox-trial.suite.maximo.com/maximo/api/os/mxapiasset",
+      "count": 20,
+      "param_shapes": [
+        [
+          "lean",
+          "oslc.orderBy",
+          "oslc.pageSize",
+          "oslc.select",
+          "oslc.where"
+        ],
+        [
+          "lean",
+          "oslc.orderBy",
+          "oslc.pageSize",
+          "oslc.select",
+          "oslc.where",
+          "pageno"
+        ]
+      ]
+    },
+    {
+      "method": "GET",
+      "url": "https://main.manage.sandbox-trial.suite.maximo.com/maximo/api/os/mxapiinvbal",
+      "count": 52,
+      "param_shapes": [
+        [
+          "lean",
+          "oslc.pageSize",
+          "oslc.select"
+        ],
+        [
+          "lean",
+          "oslc.pageSize",
+          "oslc.select",
+          "pageno"
+        ]
+      ]
+    },
+    {
+      "method": "GET",
+      "url": "https://main.manage.sandbox-trial.suite.maximo.com/maximo/api/os/mxapiinventory",
+      "count": 20,
+      "param_shapes": [
+        [
+          "lean",
+          "oslc.orderBy",
+          "oslc.pageSize",
+          "oslc.select",
+          "oslc.where"
+        ],
+        [
+          "lean",
+          "oslc.orderBy",
+          "oslc.pageSize",
+          "oslc.select",
+          "oslc.where",
+          "pageno"
+        ]
+      ]
+    },
+    {
+      "method": "GET",
+      "url": "https://main.manage.sandbox-trial.suite.maximo.com/maximo/api/os/mxapiitem",
+      "count": 20,
+      "param_shapes": [
+        [
+          "lean",
+          "oslc.orderBy",
+          "oslc.pageSize",
+          "oslc.select",
+          "oslc.where"
+        ],
+        [
+          "lean",
+          "oslc.orderBy",
+          "oslc.pageSize",
+          "oslc.select",
+          "oslc.where",
+          "pageno"
+        ]
+      ]
+    },
+    {
+      "method": "GET",
+      "url": "https://main.manage.sandbox-trial.suite.maximo.com/maximo/api/os/mxapilocations",
+      "count": 20,
+      "param_shapes": [
+        [
+          "lean",
+          "oslc.orderBy",
+          "oslc.pageSize",
+          "oslc.select",
+          "oslc.where"
+        ],
+        [
+          "lean",
+          "oslc.orderBy",
+          "oslc.pageSize",
+          "oslc.select",
+          "oslc.where",
+          "pageno"
+        ]
+      ]
+    },
+    {
+      "method": "GET",
+      "url": "https://main.manage.sandbox-trial.suite.maximo.com/maximo/api/os/mxapiperson",
+      "count": 20,
+      "param_shapes": [
+        [
+          "lean",
+          "oslc.orderBy",
+          "oslc.pageSize",
+          "oslc.select",
+          "oslc.where"
+        ],
+        [
+          "lean",
+          "oslc.orderBy",
+          "oslc.pageSize",
+          "oslc.select",
+          "oslc.where",
+          "pageno"
+        ]
+      ]
+    },
+    {
+      "method": "GET",
+      "url": "https://main.manage.sandbox-trial.suite.maximo.com/maximo/api/os/mxapipo",
+      "count": 20,
+      "param_shapes": [
+        [
+          "lean",
+          "oslc.orderBy",
+          "oslc.pageSize",
+          "oslc.select",
+          "oslc.where"
+        ],
+        [
+          "lean",
+          "oslc.orderBy",
+          "oslc.pageSize",
+          "oslc.select",
+          "oslc.where",
+          "pageno"
+        ]
+      ]
+    },
+    {
+      "method": "GET",
+      "url": "https://main.manage.sandbox-trial.suite.maximo.com/maximo/api/os/mxapisr",
+      "count": 20,
+      "param_shapes": [
+        [
+          "lean",
+          "oslc.orderBy",
+          "oslc.pageSize",
+          "oslc.select",
+          "oslc.where"
+        ],
+        [
+          "lean",
+          "oslc.orderBy",
+          "oslc.pageSize",
+          "oslc.select",
+          "oslc.where",
+          "pageno"
+        ]
+      ]
+    },
+    {
+      "method": "GET",
+      "url": "https://main.manage.sandbox-trial.suite.maximo.com/maximo/api/os/mxapiwodetail",
+      "count": 20,
+      "param_shapes": [
+        [
+          "lean",
+          "oslc.orderBy",
+          "oslc.pageSize",
+          "oslc.select",
+          "oslc.where"
+        ],
+        [
+          "lean",
+          "oslc.orderBy",
+          "oslc.pageSize",
+          "oslc.select",
+          "oslc.where",
+          "pageno"
+        ]
+      ]
+    }
+  ]
+}

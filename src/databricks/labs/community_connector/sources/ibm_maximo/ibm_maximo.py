@@ -247,11 +247,12 @@ class IbmMaximoLakeflowConnect(LakeflowConnect, SupportsPartitionedStream):
         partition: dict,
         table_options: dict[str, str],
     ) -> Iterator[dict]:
-        """Read one ``(since, until]`` changedate window on an executor."""
+        """Read one ``(since, until]`` cursor window on an executor."""
         self._validate_table(table_name)
         since = partition.get("since")
         until = partition.get("until")
-        where = self._build_where(since, until)
+        cursor_field = self._cursor_field(table_name)
+        where = self._build_where(cursor_field, since, until)
         yield from self._read_paginated(table_name, table_options, where)
 
     # ------------------------------------------------------------------
@@ -306,7 +307,9 @@ class IbmMaximoLakeflowConnect(LakeflowConnect, SupportsPartitionedStream):
                 self._parse_iso(query_since) - timedelta(seconds=lookback_seconds)
             )
 
-        where = self._build_where(query_since, self._init_time)
+        where = self._build_where(
+            self._cursor_field(table_name), query_since, self._init_time
+        )
         max_records = self._parse_int(
             table_options.get("max_records_per_batch"), 200_000, minimum=1
         )
@@ -361,10 +364,13 @@ class IbmMaximoLakeflowConnect(LakeflowConnect, SupportsPartitionedStream):
         }
         if where:
             params["oslc.where"] = where
-        # CDC cursor field is changedate; ascending sort lets partial reads
-        # resume deterministically.
-        if TABLE_METADATA[table_name].get("cursor_field"):
-            params["oslc.orderBy"] = "+changedate"
+        # Ascending sort on the table's cursor field lets partial reads resume
+        # deterministically. The cursor field is per-table: most object
+        # structures expose ``changedate``, but a few (mxapiperson,
+        # mxapiinventory, mxapiitem) do not and use ``statusdate`` instead.
+        cursor_field = self._cursor_field(table_name)
+        if cursor_field:
+            params["oslc.orderBy"] = f"+{cursor_field}"
 
         while True:
             resp = self._get_with_retry(url, params)
@@ -463,18 +469,33 @@ class IbmMaximoLakeflowConnect(LakeflowConnect, SupportsPartitionedStream):
             )
 
     @staticmethod
-    def _build_where(since: str | None, until: str | None) -> str | None:
-        """Build an ``oslc.where`` changedate range clause.
+    def _cursor_field(table_name: str) -> str | None:
+        """Return the incremental cursor attribute for an object structure.
+
+        Most Maximo object structures expose ``changedate``, but a few
+        (mxapiperson, mxapiinventory, mxapiitem) do not surface it as a
+        queryable OSLC property; those declare an alternate cursor (e.g.
+        ``statusdate``) in ``TABLE_METADATA``.
+        """
+        return (TABLE_METADATA.get(table_name) or {}).get("cursor_field")
+
+    @staticmethod
+    def _build_where(
+        cursor_field: str | None, since: str | None, until: str | None
+    ) -> str | None:
+        """Build an ``oslc.where`` cursor range clause.
 
         Lower bound is exclusive (``>``) so back-to-back windows are disjoint;
-        upper bound is inclusive (``<=``). Returns ``None`` when neither bound
-        is set (unbounded read).
+        upper bound is inclusive (``<=``). Returns ``None`` when there is no
+        cursor field or neither bound is set (unbounded read).
         """
+        if not cursor_field:
+            return None
         clauses: list[str] = []
         if since:
-            clauses.append(f'changedate>"{since}"')
+            clauses.append(f'{cursor_field}>"{since}"')
         if until:
-            clauses.append(f'changedate<="{until}"')
+            clauses.append(f'{cursor_field}<="{until}"')
         if not clauses:
             return None
         return " and ".join(clauses)
