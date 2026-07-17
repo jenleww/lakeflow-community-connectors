@@ -77,23 +77,23 @@ The IBM Maximo connector exposes a **static list** of object structures. Use the
 
 ### Object summary, primary keys, and ingestion mode
 
-Primary keys in Maximo are composite (most business objects are site- or organization-scoped). All CDC tables share `changedate` as the incremental cursor — Maximo updates `changedate` whenever a record (including its child objects) is modified.
+Primary keys in Maximo are composite (most business objects are site- or organization-scoped). Most CDC tables use `changedate` as the incremental cursor — Maximo updates `changedate` whenever a record (including its child objects) is modified. A few object structures (`mxapiinventory`, `mxapiperson`, `mxapiitem`) do not expose `changedate` as a queryable OSLC property, so they use `statusdate` as the cursor instead (see the table below).
 
 | Object structure | Maximo object | Description | Ingestion Type | Primary Key | Incremental Cursor |
 |------------------|---------------|-------------|----------------|-------------|--------------------|
 | `mxapiwodetail` | WORKORDER | Work Orders (full detail) | `cdc` | `wonum`, `siteid` | `changedate` |
 | `mxapiasset` | ASSET | Assets | `cdc` | `assetnum`, `siteid` | `changedate` |
 | `mxapipo` | PO | Purchase Orders | `cdc` | `ponum`, `siteid` | `changedate` |
-| `mxapiinventory` | INVENTORY | Inventory master (storeroom items) | `cdc` | `itemnum`, `storeloc`, `siteid` | `changedate` |
-| `mxapiinvbal` | INVBALANCES | Inventory balances by storeroom | `snapshot` | `itemnum`, `storeloc`, `siteid`, `lotnum`, `binnum` | n/a |
-| `mxapisr` | SR / TICKET | Service Requests | `cdc` | `ticketid`, `siteid` | `changedate` |
-| `mxapiperson` | PERSON | People (personnel) | `cdc` | `personid` | `changedate` |
+| `mxapiinventory` | INVENTORY | Inventory master (storeroom items) | `cdc` | `itemnum`, `location`, `siteid` | `statusdate` |
+| `mxapiinvbal` | INVBALANCES | Inventory balances by storeroom | `snapshot` | `invbalancesid` | n/a |
+| `mxapisr` | SR / TICKET | Service Requests | `cdc` | `ticketid` | `changedate` |
+| `mxapiperson` | PERSON | People (personnel) | `cdc` | `personid` | `statusdate` |
 | `mxapilocations` | LOCATIONS | Locations | `cdc` | `location`, `siteid` | `changedate` |
-| `mxapiitem` | ITEM | Item master (catalog) | `cdc` | `itemnum`, `orgid` | `changedate` |
+| `mxapiitem` | ITEM | Item master (catalog) | `cdc` | `itemnum`, `itemsetid` | `statusdate` |
 
 ### Incremental sync behavior
 
-- **CDC tables** (8 objects, cursor `changedate`): The connector reads only records whose `changedate` falls within the range since the last stored offset. Records are requested in ascending `changedate` order so partial reads resume deterministically. The connector splits the changedate range into independent time windows that can be read in parallel (see `window_seconds`). A configurable lookback (see `lookback_seconds`, default 5 minutes) is subtracted from the start cursor on each run to safely re-capture in-flight transactions from the previous batch. The lower bound of each window is exclusive and the upper bound inclusive, so back-to-back windows do not overlap or double-read.
+- **CDC tables** (8 objects; cursor `changedate`, or `statusdate` for `mxapiinventory`/`mxapiperson`/`mxapiitem`): The connector reads only records whose cursor value falls within the range since the last stored offset. Records are requested in ascending cursor order so partial reads resume deterministically. The connector splits the cursor range into independent time windows that can be read in parallel (see `window_seconds`). A configurable lookback (see `lookback_seconds`, default 5 minutes) is subtracted from the start cursor on each run to safely re-capture in-flight transactions from the previous batch. The lower bound of each window is exclusive and the upper bound inclusive, so back-to-back windows do not overlap or double-read.
   - **First run**: If no offset exists and no `start_timestamp` is set, the connector performs a full backfill of the object. Set `start_timestamp` to limit history to a recent cutoff.
 - **Snapshot table** (`mxapiinvbal`): Inventory balances change constantly and `changedate` is not reliably exposed on all Maximo versions, so this object is read as a **full paginated snapshot** on each run rather than incrementally.
 
