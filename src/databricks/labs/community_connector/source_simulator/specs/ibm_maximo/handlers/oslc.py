@@ -24,8 +24,11 @@ handler serves the endpoint directly. It:
   4. Appends a few future-dated clones so the connector's ``until=<init_time>``
      cap is exercised by the termination test (mirrors the declarative
      ``synthesize_future_records:`` directive).
-  5. Paginates via ``oslc.pageSize`` + ``pageno`` and emits a
-     ``responseInfo.nextPage.href`` when more pages remain.
+  5. Paginates via ``oslc.pageSize`` + ``pageno`` and emits the live
+     envelope: a top-level ``href`` (the bare object-structure URL) plus
+     ``responseInfo`` carrying ``href`` (the full request URL), ``pagenum``,
+     a ``previousPage.href`` once past page 1, and a ``nextPage.href``
+     while more pages remain.
 
 Snapshot object structures (mxapiinvbal) issue no ``oslc.where`` and have no
 cursor; for those the handler skips range filtering, sorting, and future-record
@@ -100,11 +103,26 @@ def read_os(prep: PreparedRequest, spec: Any, corpus: Any) -> Response:  # noqa:
     start = (pageno - 1) * page_size
     page = filtered[start : start + page_size]
 
-    response_info: dict[str, Any] = {"pagenum": pageno}
+    # Mirror the live MAS Manage envelope exactly:
+    #   {"member": [...], "href": "<url without query>",
+    #    "responseInfo": {"href": "<full request url>", "pagenum": N,
+    #                     "previousPage": {"href": ...},   # when pagenum > 1
+    #                     "nextPage": {"href": ...}}}      # when more pages
+    request_url = prep.url or ""
+    response_info: dict[str, Any] = {
+        "href": request_url,
+        "pagenum": pageno,
+    }
+    if pageno > 1:
+        response_info["previousPage"] = {"href": _page_href(request_url, pageno - 1)}
     if start + page_size < len(filtered) and page:
-        response_info["nextPage"] = {"href": _next_href(prep.url or "", pageno + 1)}
+        response_info["nextPage"] = {"href": _page_href(request_url, pageno + 1)}
 
-    payload = {"member": page, "responseInfo": response_info}
+    payload = {
+        "member": page,
+        "href": _strip_query(request_url),
+        "responseInfo": response_info,
+    }
     return _build_response(prep, 200, payload)
 
 
@@ -184,13 +202,25 @@ def _augment_with_future(
     return list(records) + future
 
 
-def _next_href(request_url: str, next_pageno: int) -> str:
+def _page_href(request_url: str, pageno: int) -> str:
+    """Return ``request_url`` with its ``pageno`` param set to ``pageno``."""
     parts = urlsplit(request_url)
     query = {k: v[-1] for k, v in parse_qs(parts.query, keep_blank_values=True).items()}
-    query["pageno"] = str(next_pageno)
+    query["pageno"] = str(pageno)
     return urlunsplit(
         (parts.scheme, parts.netloc, parts.path, urlencode(query), parts.fragment)
     )
+
+
+def _strip_query(request_url: str) -> str:
+    """Return ``request_url`` without its query string or fragment.
+
+    Live MAS Manage sets the body's top-level ``href`` to the bare object
+    structure URL (no query params), distinct from ``responseInfo.href``
+    which carries the full query.
+    """
+    parts = urlsplit(request_url)
+    return urlunsplit((parts.scheme, parts.netloc, parts.path, "", ""))
 
 
 def _to_int(value: Any, default: int) -> int:

@@ -73,7 +73,6 @@ class TestIbmMaximoConnector(LakeflowConnectTests, SupportsPartitionedStreamTest
             "actfinish",
             "schedstart",
             "schedfinish",
-            "owner",
             "ownerperson",
             "ownergroup",
             "glaccount",
